@@ -18,7 +18,8 @@
     const GAME_SQUARE_COUNT = 9;
     const PLAYER_VS_PLAYER_MODE = 1;
     const PLAYER_VS_AI_EASY_MODE = 2;
-    const PLAYER_VS_AI_HARD_MODE = 3;
+    const PLAYER_VS_AI_MEDIUM_MODE = 3;
+    const PLAYER_VS_AI_HARD_MODE = 4;
 
 
     // Square
@@ -83,6 +84,8 @@
                            defaultChecked onChange={this._onModeChange.bind(this)}/>Player vs Player<br />
                     <input type="radio" name="mode" value={PLAYER_VS_AI_EASY_MODE}
                            onChange={this._onModeChange.bind(this)}/>Player vs AI(easy)<br />
+                    <input type="radio" name="mode" value={PLAYER_VS_AI_MEDIUM_MODE}
+                           onChange={this._onModeChange.bind(this)}/>Player vs AI(med.)
                     <input type="radio" name="mode" value={PLAYER_VS_AI_HARD_MODE}
                            onChange={this._onModeChange.bind(this)}/>Player vs AI(hard)
                 </div>
@@ -199,8 +202,8 @@
 
         _handleSquareClick(idx) {
             let currentPlayer = this.state.xIsNext ? "X" : "O";
-            this._makeMove(currentPlayer, idx).then(() => {
-                if (this.state.mode !== PLAYER_VS_PLAYER_MODE && !this.state.gameOver
+            this._makeMove(currentPlayer, idx).then((moveSucceeded) => {
+                if (moveSucceeded && this.state.mode !== PLAYER_VS_PLAYER_MODE && !this.state.gameOver
                     && currentPlayer === 'X') {
                     this._makeAIMove('O');
                 }
@@ -210,7 +213,7 @@
         _makeMove(player, idx) {
             const squares = this.state.gameBoard.squares.slice();
             if (squares[idx] || this.state.gameOver) {
-                return;
+                return Promise.resolve(false);
             }
             squares[idx] = player;
 
@@ -295,7 +298,7 @@
                 xWinCount,
                 oWinCount,
                 drawCount
-            });
+            }).then(() => true);
         }
 
         _nextPlayerString(xIsNext) {
@@ -346,9 +349,10 @@
             let board = this.state.gameBoard.squares.slice();
             switch (this.state.mode) {
                 case PLAYER_VS_AI_EASY_MODE:
-                    let emptyIndeces = this._emptyIndeces(board);
-                    let idx = this._getRandomNumberIndex(emptyIndeces.length - 1);
-                    bestMove = this._emptyIndeces(board)[idx];
+                    bestMove = this._getWins(board, player);
+                    break;
+                case PLAYER_VS_AI_MEDIUM_MODE:
+                    bestMove = this._getWinsAndBlocks(board, player);
                     break;
                 case PLAYER_VS_AI_HARD_MODE:
                     bestMove = this._minimax(board, player).index;
@@ -361,6 +365,38 @@
             return this._makeMove(player, bestMove);
         }
 
+        _getRandomAvailableMove(board) {
+            let emptyIndeces = this._emptyIndeces(board);
+            let idx = this._getRandomNumberIndex(emptyIndeces.length - 1);
+            return emptyIndeces[idx];
+        }
+
+        _getWins(board, player) {
+            let winningMove = this._findTwoInRow(board, player);
+            if (winningMove !== null) {
+                return winningMove;
+            }
+            return this._getRandomAvailableMove(board);
+        }
+
+        _getWinsAndBlocks(board, player) {
+            let opponent = player === 'X'? 'O':'X';
+            let winningMove = this._findTwoInRow(board, player);
+            if (winningMove !== null) {
+                return winningMove;
+            }
+            let blockingMove = this._findTwoInRow(board, opponent);
+            if (blockingMove !== null) {
+                return blockingMove;
+            }
+            // on first move only choose between position 0 and 4
+            if (this._emptyIndeces(board).length === GAME_SQUARE_COUNT) {
+                let idx = this._getRandomNumberIndex(1);
+                return [0,4][idx];
+            }
+            return this._getRandomAvailableMove(board);
+        }
+
         // For 'easy' AI mode, simply return a random selection of one of the
         // available open squares.
         _getRandomNumberIndex(max) {
@@ -369,6 +405,33 @@
                 randomIdx = max;
             }
             return randomIdx;
+        }
+
+        _findTwoInRow(board, player) {
+            const possibleCombos = {
+                0: [[1,2],[3,6],[4,8]],
+                1: [[0,2],[4,7]],
+                2: [[0,1],[4,6],[5,8]],
+                3: [[0,6],[4,5]],
+                4: [[0,8],[2,6],[1,7],[3,5]],
+                5: [[3,4],[2,8]],
+                6: [[0,3],[2,4],[7,8]],
+                7: [[1,4],[6,8]],
+                8: [[0,4],[6,7],[2,5]]
+            };
+            let emptyIndeces = this._emptyIndeces(board);
+            for (let i = 0; i < emptyIndeces.length; i++){
+                let idx = emptyIndeces[i];
+                let combos = possibleCombos[idx];
+                for (let j = 0; j < combos.length; j++) {
+                    let comboSet = combos[j];
+                    if (board[comboSet[0]] === player && board[comboSet[1]] === player) {
+                        return idx; // This empty spot is in line with two-in-a-row
+                    }
+                }
+            }
+
+            return null;
         }
 
         // For 'hard' AI mode, use the well know 'Minimax' method which calculates an optimal move
